@@ -278,6 +278,44 @@ CI 构建：在仓库 `Settings → Secrets and variables → Actions` 中新增
 
 ---
 
+## 常见问题排错
+
+### 一打开就闪退
+
+已在 v0.1.0 修复。历史上出现过两类原因，供二次开发参考：
+
+1. `BDMapSDKException: context must be an ApplicationContext`
+   → `SDKInitializer.setAgreePrivacy()` / `SDKInitializer.initialize()` **必须传 ApplicationContext**，
+   传 Activity 会直接抛异常。
+2. `The location function has been stopped because you do not agree with the privacy compliance policy`
+   → 定位 SDK 的隐私开关和地图 SDK 是**两个独立开关**，必须额外调用
+   `LocationClient.setAgreePrivacy(true)`，否则 `new LocationClient(...)` 会抛异常。
+
+### 地图空白 / 定位一直失败
+
+先看日志里的 `鉴权错误信息`，百度 SDK 会打印出它认为的 SHA1 与包名：
+
+```bash
+adb logcat | grep -A6 "鉴权错误信息"
+```
+
+| errorcode | 含义 | 处理 |
+|---|---|---|
+| `101` | 在 AndroidManifest 中取不到 API_KEY | 检查 manifest 里的 meta-data；注意地图与定位 SDK 读的是**两个不同的 key 名**：`com.baidu.lbsapi.API_KEY`（地图）与 `com.baidu.android.lbs.API_KEY`（定位），两个都要声明 |
+| `200` | APP 不存在 / AK 有误 | AK 没注册成功，或 **SHA1 / 包名与申请时不一致** |
+| `230` | 签名校验失败 | 换过签名证书（例如重新构建导致 debug 证书变化），需重新申请 AK |
+
+日志里的 `sha1;package:xx:xx:...;com.atouboot.radiusmap` 就是百度 SDK 实际拿到的
+签名与包名，**照抄这两个值去申请 AK** 即可，不要手敲。
+
+其他检查项：
+
+- 是否在 App 内「AK 设置」填过 AK 并**重启**（运行时填写的 AK 需重启生效）
+- 系统定位开关是否打开；是否已授予位置权限
+- 设备是否联网（百度定位需要网络辅助）
+
+---
+
 ## 安全与隐私
 
 - 仓库中**不包含**百度地图 AK、签名密钥或任何秘密。
