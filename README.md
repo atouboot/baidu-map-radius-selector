@@ -1,5 +1,9 @@
 # 圆形半径选点 · Baidu Map Radius Selector
 
+[![Build APK](https://github.com/atouboot/baidu-map-radius-selector/actions/workflows/build.yml/badge.svg)](https://github.com/atouboot/baidu-map-radius-selector/actions/workflows/build.yml)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+[![minSdk](https://img.shields.io/badge/minSdk-24-green.svg)](https://developer.android.com/about/versions/nougat)
+
 一个开源 Android 应用：在百度地图上**选点**并绘制**指定半径的圆形区域**。
 
 点击地图任意位置或读取手机当前 GPS 位置作为圆心，输入半径（单位 km，精确到 0.01 km），
