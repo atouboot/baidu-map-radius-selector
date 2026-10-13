@@ -38,7 +38,7 @@
     <string name="btn_locate">定位到我的位置</string>
     <string name="btn_use_location_as_center">以定位点为圆心</string>
     <string name="btn_clear">清除圆形</string>
-    <string name="tip_click_map">提示：点击地图任意位置即可设为圆心；半径精确到 0.01 km。</string>
+    <string name="tip_click_map">提示：点击地图任意位置即可设为圆心；「以定位点为圆心」只设置圆心、不会移动或缩放地图；半径精确到 0.01 km。</string>
 
     <!-- 提示语 -->
     <string name="toast_no_permission">未获得定位权限，无法读取当前位置</string>

@@ -211,10 +211,12 @@ class MainActivity : AppCompatActivity() {
         applyCircle()
     }
 
+    /**
+     * 只把镜头平移到目标点，**不改变缩放级别**。
+     * 用于「定位到我的位置」：需要移动视角，但不该顺带改变用户当前的缩放。
+     */
     private fun moveCamera(latLng: LatLng) {
-        baiduMap.animateMapStatus(
-            MapStatusUpdateFactory.newLatLngZoom(latLng, zoomForRadius(radiusKm))
-        )
+        baiduMap.animateMapStatus(MapStatusUpdateFactory.newLatLng(latLng))
     }
 
     /**
@@ -360,7 +362,8 @@ class MainActivity : AppCompatActivity() {
                     pendingAction = ACTION_NONE
                     when (action) {
                         ACTION_MOVE_CAMERA -> moveCamera(fix)
-                        ACTION_SET_CENTER -> setCenter(fix, moveCamera = true)
+                        // 只设置圆心，完全不改变地图视角
+                        ACTION_SET_CENTER -> setCenter(fix, moveCamera = false)
                     }
                 }
             }
@@ -430,7 +433,8 @@ class MainActivity : AppCompatActivity() {
             pendingAction = ACTION_NONE
             when (action) {
                 ACTION_MOVE_CAMERA -> moveCamera(known)
-                ACTION_SET_CENTER -> setCenter(known, moveCamera = true)
+                // 只设置圆心，完全不改变地图视角
+                ACTION_SET_CENTER -> setCenter(known, moveCamera = false)
             }
             // 同时刷新一次，更新精度显示
             startLocate()
