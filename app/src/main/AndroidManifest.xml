@@ -34,9 +34,16 @@
             本地 -> local.properties 中的 BAIDU_MAP_AK
             CI   -> GitHub Actions Secret BAIDU_MAP_AK
           两者都没有时为空字符串，App 会在运行时提示你在界面里填写 AK。
+
+          注意：地图 SDK 与定位 SDK 读取的是【两个不同的 key 名】，
+          少声明一个会导致对应 SDK 鉴权失败（errorcode 101）。两个都要写。
         -->
         <meta-data
             android:name="com.baidu.lbsapi.API_KEY"
+            android:value="${BAIDU_MAP_AK}" />
+
+        <meta-data
+            android:name="com.baidu.android.lbs.API_KEY"
             android:value="${BAIDU_MAP_AK}" />
 
         <activity

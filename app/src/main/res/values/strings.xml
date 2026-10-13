@@ -43,7 +43,7 @@
     <!-- 提示语 -->
     <string name="toast_no_permission">未获得定位权限，无法读取当前位置</string>
     <string name="toast_locating">正在定位，请稍候…</string>
-    <string name="toast_location_failed">定位失败，请检查网络与系统定位开关</string>
+    <string name="toast_location_failed">定位失败：请确认①已配置百度 AK 且包名/SHA1 匹配 ②系统定位开关与网络正常</string>
     <string name="toast_need_center">请先在地图上点击选点，或点击「定位到我的位置」</string>
     <string name="toast_ak_saved">AK 已保存，重启应用后生效</string>
     <string name="toast_ak_empty">AK 不能为空</string>

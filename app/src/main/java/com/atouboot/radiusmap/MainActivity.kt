@@ -158,12 +158,24 @@ class MainActivity : AppCompatActivity() {
 
     private fun initBaiduSdk() {
         effectiveAk = resolveAk()
+        // 注意 1：百度 SDK 的 setAgreePrivacy / initialize 要求传入 ApplicationContext，
+        //         传 Activity 会抛 BDMapSDKException: context must be an ApplicationContext。
+        // 注意 2：定位 SDK 与地图 SDK 的隐私开关是【两个独立】的，
+        //         只调 SDKInitializer 会让 LocationClient 构造时抛
+        //         "The location function has been stopped because you do not agree with the privacy compliance policy"。
+        val appContext = applicationContext
         // 合规声明：本应用为自用工具，调用方已同意百度定位/地图 SDK 的隐私政策
-        SDKInitializer.setAgreePrivacy(this, true)
+        SDKInitializer.setAgreePrivacy(appContext, true)
+        LocationClient.setAgreePrivacy(true)
+
         if (effectiveAk.isNotEmpty()) {
+            // 地图 SDK 的 AK
             SDKInitializer.setApiKey(effectiveAk)
+            // 注意 3：定位 SDK 的 AK 需要单独设置（LocationClient.setKey），
+            //         只调 SDKInitializer.setApiKey 定位仍会报 errorcode 101。
+            LocationClient.setKey(effectiveAk)
         }
-        SDKInitializer.initialize(this)
+        SDKInitializer.initialize(appContext)
     }
 
     // ------------------------------------------------------------------ 地图
@@ -310,7 +322,7 @@ class MainActivity : AppCompatActivity() {
         option.setIgnoreKillProcess(true)
         option.setFirstLocType(LocationClientOption.FirstLocType.ACCURACY_IN_FIRST_LOC)
 
-        val client = LocationClient(this)
+        val client = LocationClient(applicationContext)
         client.setLocOption(option)
         client.registerLocationListener(locationListener)
         locationClient = client
