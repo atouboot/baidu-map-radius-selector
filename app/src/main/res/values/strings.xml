@@ -14,6 +14,23 @@
     <string name="fmt_accuracy">定位精度：%1$s</string>
     <string name="fmt_radius_area">半径：%1$s km ｜ 覆盖面积：%2$s km²</string>
     <string name="accuracy_meters">±%1$s m</string>
+    <string name="fmt_zone_meta">%1$s km ｜ %2$s</string>
+
+    <!-- 已保存区域 -->
+    <string name="label_saved_zones">已保存区域</string>
+    <string name="fmt_saved_count">已保存区域（%1$d）</string>
+    <string name="btn_clear_all">全部清除</string>
+    <string name="btn_save_zone">保存当前圆形</string>
+    <string name="empty_zones_hint">还没有保存的区域。选好圆心和半径后点「保存当前圆形」。</string>
+    <string name="default_zone_name">区域 %1$d</string>
+    <string name="toast_saved">已保存：%1$s</string>
+    <string name="toast_deleted">已删除：%1$s</string>
+    <string name="toast_cleared_all">已清除全部 %1$d 个区域</string>
+    <string name="toast_nothing_to_clear">当前没有已保存的区域</string>
+    <string name="toast_zone_loaded">已定位到：%1$s</string>
+    <string name="dialog_clear_all_title">清除全部区域</string>
+    <string name="dialog_clear_all_message">将删除已保存的 %1$d 个圆形区域，此操作不可撤销。</string>
+    <string name="dialog_clear_confirm">清除</string>
 
     <!-- 底部操作卡片 -->
     <string name="hint_radius">半径（km）</string>

@@ -9,6 +9,7 @@ import android.graphics.Paint
 import android.os.Bundle
 import android.text.Editable
 import android.text.TextWatcher
+import android.view.View
 import android.view.ViewGroup
 import android.widget.EditText
 import android.widget.FrameLayout
@@ -16,8 +17,12 @@ import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import androidx.recyclerview.widget.LinearLayoutManager
 import com.atouboot.radiusmap.data.AppPrefs
+import com.atouboot.radiusmap.data.CircleStore
+import com.atouboot.radiusmap.data.CircleZone
 import com.atouboot.radiusmap.databinding.ActivityMainBinding
+import com.atouboot.radiusmap.ui.CircleZoneAdapter
 import com.atouboot.radiusmap.util.GeoUtils
 import com.baidu.location.BDAbstractLocationListener
 import com.baidu.location.BDLocation
@@ -44,11 +49,12 @@ import java.util.Locale
 /**
  * 主界面：地图选点 + 圆形半径定位。
  *
- * MVP 能力：
+ * 能力：
  *  - 点击地图任意位置设为圆心
  *  - 读取手机当前 GPS 位置，可一键设为圆心
  *  - 输入半径（km，精确到 0.01），实时绘制半透明圆形区域
  *  - 显示圆心经纬度、定位精度、覆盖面积
+ *  - 保存 / 管理 / 清除多个圆形区域（本地持久化）
  *  - 运行时可配置百度地图 AK（不写入仓库）
  */
 class MainActivity : AppCompatActivity() {
@@ -77,7 +83,14 @@ class MainActivity : AppCompatActivity() {
     private var locationClient: LocationClient? = null
     private var pendingAction: Int = ACTION_NONE
 
+    /** 已保存的区域列表 */
+    private lateinit var zoneAdapter: CircleZoneAdapter
+    private val zones = mutableListOf<CircleZone>()
+
     private val centerIcon: BitmapDescriptor by lazy { buildCenterIcon() }
+
+    /** 解析后的 AK（App 内填写优先，其次编译期注入） */
+    private var effectiveAk: String = ""
 
     // ------------------------------------------------------------------ 生命周期
 
@@ -92,6 +105,7 @@ class MainActivity : AppCompatActivity() {
         setupMap()
         setupLocationClient()
         setupRadiusInput()
+        setupZoneList()
         setupButtons()
 
         updateInfo()
@@ -127,11 +141,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     // ------------------------------------------------------------------ 百度 SDK 初始化
-
-    /**
-     * 解析 AK：优先使用 App 内填写的，其次使用编译期注入的。
-     */
-    private var effectiveAk: String = ""
 
     private fun resolveAk(): String {
         val fromPrefs = AppPrefs.getBaiduAk()
@@ -175,7 +184,7 @@ class MainActivity : AppCompatActivity() {
             }
 
             override fun onMapPoiClick(mapPoi: MapPoi?) {
-                // MVP 不处理 POI 点击
+                // 不处理 POI 点击
             }
         })
     }
@@ -444,6 +453,84 @@ class MainActivity : AppCompatActivity() {
         })
     }
 
+    // ------------------------------------------------------------------ 已保存区域
+
+    private fun setupZoneList() {
+        zoneAdapter = CircleZoneAdapter(
+            onItemClick = { zone -> focusZone(zone) },
+            onItemDelete = { zone -> deleteZone(zone) }
+        )
+        binding.rvZones.layoutManager =
+            LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false)
+        binding.rvZones.adapter = zoneAdapter
+        refreshZones()
+    }
+
+    private fun refreshZones() {
+        zones.clear()
+        zones.addAll(CircleStore.loadAll())
+        zoneAdapter.submit(zones)
+
+        val hasZones = zones.isNotEmpty()
+        binding.rvZones.visibility = if (hasZones) View.VISIBLE else View.GONE
+        binding.tvZonesEmpty.visibility = if (hasZones) View.GONE else View.VISIBLE
+        binding.tvSavedTitle.text = getString(R.string.fmt_saved_count, zones.size)
+        binding.btnClearAll.isEnabled = hasZones
+    }
+
+    private fun saveCurrentZone() {
+        val center = centerLatLng
+        if (center == null) {
+            toast(getString(R.string.toast_need_center))
+            return
+        }
+
+        val now = System.currentTimeMillis()
+        val name = getString(R.string.default_zone_name, zones.size + 1)
+        val zone = CircleZone(
+            id = now,
+            name = name,
+            latitude = center.latitude,
+            longitude = center.longitude,
+            radiusKm = radiusKm,
+            createdAt = now
+        )
+        CircleStore.add(zone)
+        refreshZones()
+        toast(getString(R.string.toast_saved, name))
+    }
+
+    private fun deleteZone(zone: CircleZone) {
+        CircleStore.remove(zone.id)
+        refreshZones()
+        toast(getString(R.string.toast_deleted, zone.name))
+    }
+
+    private fun focusZone(zone: CircleZone) {
+        radiusKm = zone.radiusKm
+        binding.etRadius.setText(GeoUtils.formatKm(zone.radiusKm))
+        setCenter(LatLng(zone.latitude, zone.longitude), moveCamera = true)
+        toast(getString(R.string.toast_zone_loaded, zone.name))
+    }
+
+    private fun clearAllZones() {
+        if (zones.isEmpty()) {
+            toast(getString(R.string.toast_nothing_to_clear))
+            return
+        }
+        val count = zones.size
+        MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.dialog_clear_all_title)
+            .setMessage(getString(R.string.dialog_clear_all_message, count))
+            .setPositiveButton(R.string.dialog_clear_confirm) { _, _ ->
+                CircleStore.clear()
+                refreshZones()
+                toast(getString(R.string.toast_cleared_all, count))
+            }
+            .setNegativeButton(R.string.dialog_cancel, null)
+            .show()
+    }
+
     // ------------------------------------------------------------------ 按钮
 
     private fun setupButtons() {
@@ -455,8 +542,16 @@ class MainActivity : AppCompatActivity() {
             ensureLocationThen(ACTION_SET_CENTER)
         }
 
+        binding.btnSave.setOnClickListener {
+            saveCurrentZone()
+        }
+
         binding.btnClear.setOnClickListener {
             clearCircle()
+        }
+
+        binding.btnClearAll.setOnClickListener {
+            clearAllZones()
         }
 
         binding.btnSettings.setOnClickListener {

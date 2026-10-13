@@ -12,7 +12,11 @@ app/build/
 build/
 *.apk
 *.aab
+
+# 签名证书一律不入库（CI 通过 Secret 或缓存提供）
 *.keystore
 *.jks
-!debug.keystore
-ci/last-build.log
+.ci-signing/
+
+# CI 构建日志
+build.log

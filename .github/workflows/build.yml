@@ -4,13 +4,12 @@ on:
   push:
     branches: [ main, master ]
     paths-ignore:
-      - 'ci/**'
       - '**.md'
   pull_request:
     branches: [ main, master ]
   workflow_dispatch:
 
-# 需要写权限：用于发布 Release（APK）以及在失败时回写构建日志
+# 需要写权限：用于把 APK 发布到 Release
 permissions:
   contents: write
 
@@ -22,13 +21,14 @@ jobs:
   build:
     name: Assemble debug APK
     runs-on: ubuntu-latest
+    timeout-minutes: 30
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
@@ -43,38 +43,59 @@ jobs:
         with:
           gradle-version: '8.7'
 
-      # 固定 debug 签名证书，保证每次构建的 SHA1 一致，
-      # 这样用户申请的百度 AK（绑定 SHA1）不会因重新构建而失效。
-      - name: Restore debug keystore
+      # 关键：复用同一份调试证书，让签名 SHA1 保持稳定。
+      # 百度地图 AK 需要绑定「包名 + SHA1」，SHA1 每次都变会导致 AK 失效。
+      - name: Restore signing keystore cache
         uses: actions/cache@v4
         with:
-          path: ~/.android/debug.keystore
-          key: android-debug-keystore-v1
+          path: .ci-signing
+          key: ci-signing-keystore-v1
+
+      - name: Prepare signing keystore
+        id: keystore
+        run: |
+          set -e
+          KS_DIR="$GITHUB_WORKSPACE/.ci-signing"
+          KS="$KS_DIR/debug.keystore"
+          mkdir -p "$KS_DIR"
+
+          if [ -n "${{ secrets.SIGNING_KEYSTORE_BASE64 }}" ]; then
+            printf '%s' "${{ secrets.SIGNING_KEYSTORE_BASE64 }}" | base64 -d > "$KS"
+            echo "使用仓库 Secret 提供的签名证书"
+          elif [ -f "$KS" ]; then
+            echo "复用缓存中的调试签名证书"
+          else
+            keytool -genkeypair -v \
+              -keystore "$KS" \
+              -storepass android -keypass android \
+              -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 \
+              -dname "CN=Android Debug,O=Android,C=US" > /dev/null 2>&1
+            echo "已生成新的调试签名证书"
+          fi
+
+          echo "DEBUG_KEYSTORE_PATH=$KS" >> "$GITHUB_ENV"
+
+          SHA1=$(keytool -list -v -keystore "$KS" -alias androiddebugkey \
+                   -storepass android -keypass android 2>/dev/null \
+                 | awk -F'SHA1: ' '/SHA1:/{print $2; exit}' | tr -d '[:space:]')
+          echo "sha1=$SHA1" >> "$GITHUB_OUTPUT"
+
+          {
+            echo "### 签名证书 SHA1（申请百度 AK 时填写）"
+            echo '```'
+            echo "$SHA1"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Build debug APK
         id: build
         continue-on-error: true
         env:
-          # 可选：在仓库 Settings -> Secrets 中配置 BAIDU_MAP_AK 即可把 AK 编译进 APK。
-          # 不配置也没关系，App 内可在运行时填写。
+          # 可选：配置后 AK 会被编译进 APK；不配置也能用（App 内可运行时填写）
           BAIDU_MAP_AK: ${{ secrets.BAIDU_MAP_AK }}
         run: |
           set -o pipefail
-          gradle --no-daemon --stacktrace assembleDebug 2>&1 | tee build.log
-
-      - name: Print signing fingerprint
-        if: always()
-        run: |
-          KS="$HOME/.android/debug.keystore"
-          if [ -f "$KS" ]; then
-            echo "::group::debug.keystore SHA1 / MD5（申请百度 AK 时需要）"
-            keytool -list -v -keystore "$KS" -alias androiddebugkey \
-              -storepass android -keypass android 2>/dev/null \
-              | grep -E "SHA1:|SHA256:|MD5:" || true
-            echo "::endgroup::"
-          else
-            echo "debug.keystore 尚未生成（构建在生成签名前就失败了）"
-          fi
+          ./gradlew --no-daemon --stacktrace assembleDebug 2>&1 | tee build.log
 
       - name: Rename APK
         if: steps.build.outcome == 'success'
@@ -105,12 +126,17 @@ jobs:
             - 提交：`${{ github.sha }}`
             - 触发：`${{ github.event_name }}`
 
+            ### 签名证书 SHA1（申请百度 AK 时填写）
+
+            ```
+            ${{ steps.keystore.outputs.sha1 }}
+            ```
+
             安装与 AK 配置请阅读仓库 README。
           files: dist/*.apk
           make_latest: true
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      # 失败时把日志一并保留在 Actions 页面（默认即可查看），无需额外步骤
       - name: Fail job if build failed
         if: steps.build.outcome == 'failure'
         run: exit 1

@@ -1,3 +1,4 @@
+import java.io.File
 import java.util.Properties
 
 plugins {
@@ -43,10 +44,33 @@ android {
         vectorDrawables.useSupportLibrary = true
     }
 
+    // CI 在仓库内固定路径生成 / 复用调试证书，让签名 SHA1 保持稳定。
+    // 原因：百度地图 AK 需要绑定「包名 + SHA1」，SHA1 每次都变会导致 AK 失效。
+    // 本地构建时不设置该环境变量，仍使用 Android 默认的 debug 证书。
+    val ciKeystoreFile: File? = System.getenv("DEBUG_KEYSTORE_PATH")
+        ?.takeIf { it.isNotBlank() }
+        ?.let { file(it) }
+        ?.takeIf { it.exists() }
+
+    signingConfigs {
+        val ksf = ciKeystoreFile
+        if (ksf != null) {
+            create("ciDebug") {
+                storeFile = ksf
+                storePassword = "android"
+                keyAlias = "androiddebugkey"
+                keyPassword = "android"
+            }
+        }
+    }
+
     buildTypes {
         debug {
             isMinifyEnabled = false
             applicationIdSuffix = ""
+            if (ciKeystoreFile != null) {
+                signingConfig = signingConfigs.getByName("ciDebug")
+            }
         }
         release {
             // MVP 阶段保持不混淆，降低构建风险；

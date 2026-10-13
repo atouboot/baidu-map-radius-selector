@@ -22,7 +22,7 @@
 | 显示定位精度（±x.x m） | ✅ |
 | 显示覆盖面积（km²） | ✅ |
 | 运行时配置百度地图 AK（不写进仓库） | ✅ |
-| 保存 / 管理 / 清除多个圆形区域 | 🚧 见 Roadmap |
+| 保存 / 管理 / 清除多个圆形区域 | ✅ |
 
 ---
 
@@ -112,9 +112,13 @@ cp local.properties.example local.properties
 
 **A. 针对 CI 构建的 APK（推荐）**
 
-CI 会复用同一个 debug 签名证书（通过 Actions cache 持久化），因此 SHA1 是稳定的。
-在任意一次成功构建的 Actions 日志里，展开 `Print signing fingerprint` 分组即可看到
-`SHA1:` 与 `MD5:` 值，用 SHA1 去申请 AK。
+CI 会**复用同一份调试签名证书**（通过 Actions cache 持久化），所以 SHA1 跨构建稳定。
+获取方式任选其一：
+
+1. 打开仓库 **Releases** 页面 → `ci-latest` → 发布说明里直接写着 SHA1；
+2. 打开任意一次成功构建的 Actions 运行页 → 页面底部的 **Summary** 里也有 SHA1。
+
+拿到 SHA1 后去申请 AK 即可。
 
 **B. 针对本地构建的 APK**
 
@@ -167,7 +171,14 @@ CI 构建：在仓库 `Settings → Secrets and variables → Actions` 中新增
    - `中心点：39.908823, 116.397470`
    - `定位精度：±8.0 m`
    - `半径：1.00 km ｜ 覆盖面积：3.14 km²`
-5. 点击 **「清除圆形」** 移除当前圆形。
+5. 点 **「保存当前圆形」** 把当前「圆心 + 半径」存入底部「已保存区域」。
+6. **管理已保存区域**：
+   - 点击列表卡片 → 地图跳到该区域并画出它的圆形（半径也会同步）；
+   - 点击卡片右上角 **✕** → 删除该区域；
+   - 点击 **「全部清除」** → 二次确认后清空全部。
+7. 点 **「清除圆形」** 只移除地图上当前的圆形，**不影响**已保存的区域。
+
+> 已保存区域存放在本机 `SharedPreferences`（JSON），卸载应用会一并清除。
 
 > 首次使用定位功能时，系统会请求位置权限，请选择「允许」。
 
@@ -186,11 +197,22 @@ CI 构建：在仓库 `Settings → Secrets and variables → Actions` 中新增
 工作流做了什么：
 
 1. JDK 17 + Android SDK（`platforms;android-34`、`build-tools;34.0.0`）
-2. Gradle 8.7 构建 `assembleDebug`
-3. 打印 debug 签名证书的 `SHA1 / MD5`（申请 AK 用）
-4. 上传 APK 为 Actions artifact（保留 30 天）
-5. 发布到固定 Release：tag `ci-latest`，可直接匿名下载
-6. **构建失败时**：把编译日志回写到 `ci/last-build.log` 并提交，便于排查
+2. 准备签名证书：优先使用 Secret `SIGNING_KEYSTORE_BASE64`，否则生成一份并缓存
+   （保证 SHA1 跨构建稳定，避免 AK 失效）
+3. Gradle 8.7 执行 `assembleDebug`
+4. 把签名证书 SHA1 写入 Actions Summary 与 Release 说明（申请 AK 用）
+5. 上传 APK 为 Actions artifact（保留 30 天）
+6. 发布到固定 Release：tag `ci-latest`，可直接匿名下载
+
+可选 Secrets（都不是必需的）：
+
+| Secret | 作用 |
+|---|---|
+| `BAIDU_MAP_AK` | 把 AK 编译进 APK；不配置则在 App 内运行时填写 |
+| `SIGNING_KEYSTORE_BASE64` | 使用你自己的签名证书（base64 编码的 keystore），SHA1 完全可控 |
+
+> 若 GitHub Actions 缓存被清理（超过 7 天无构建），证书会重新生成、SHA1 随之变化，
+> 此时需要重新申请一次 AK，或改用 `SIGNING_KEYSTORE_BASE64` 彻底固定。
 
 ---
 
@@ -205,11 +227,14 @@ CI 构建：在仓库 `Settings → Secrets and variables → Actions` 中新增
 │   └── src/main/
 │       ├── AndroidManifest.xml      # 权限、AK 占位符、定位服务
 │       ├── java/com/atouboot/radiusmap/
-│       │   ├── RadiusMapApp.kt      # Application
-│       │   ├── MainActivity.kt      # 主界面：选点 / 定位 / 画圆
-│       │   ├── data/AppPrefs.kt     # 本地 AK 存储
-│       │   └── util/GeoUtils.kt     # 距离 / 面积 / 格式化
-│       └── res/                     # 中文界面资源
+│       │   ├── RadiusMapApp.kt          # Application
+│       │   ├── MainActivity.kt          # 主界面：选点 / 定位 / 画圆 / 管理
+│       │   ├── data/AppPrefs.kt         # 本地存储（AK + 区域 JSON）
+│       │   ├── data/CircleZone.kt       # 区域数据模型 + JSON 序列化
+│       │   ├── data/CircleStore.kt      # 区域增删查仓库
+│       │   ├── ui/CircleZoneAdapter.kt  # 已保存区域列表适配器
+│       │   └── util/GeoUtils.kt         # 距离 / 面积 / 格式化
+│       └── res/                         # 中文界面资源
 ├── local.properties.example         # AK 配置模板
 ├── build.gradle.kts
 ├── settings.gradle.kts
@@ -234,8 +259,8 @@ CI 构建：在仓库 `Settings → Secrets and variables → Actions` 中新增
 
 ## 已知限制与 Roadmap
 
-- [x] **MVP**：地图选点 / GPS 定位 / 半径输入 / 实时画圆 / 信息展示 / AK 配置
-- [ ] 保存、管理、清除**多个**圆形区域（本地持久化 + 列表管理）
+- [x] **阶段 1（MVP）**：地图选点 / GPS 定位 / 半径输入 / 实时画圆 / 信息展示 / AK 配置
+- [x] **阶段 2**：保存、管理、清除**多个**圆形区域（本地持久化 + 横向列表管理）
 - [ ] 圆心反向地理编码显示地址（需引入 `BaiduMapSDK_Search`）
 - [ ] 一键「缩放到合适级别」按钮
 - [ ] 圆形导出为 GeoJSON / 分享
