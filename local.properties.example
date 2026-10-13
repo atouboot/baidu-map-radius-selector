@@ -1,0 +1,9 @@
+# 复制本文件为 local.properties 后再填写（local.properties 已被 .gitignore 忽略，不会提交）
+#
+# Android SDK 路径（本地构建时需要，CI 上由 android-actions/setup-android 提供）
+# sdk.dir=/Users/you/Library/Android/sdk
+
+# 百度地图 AK（可选）。
+# 留空也可以：App 启动后可在界面右上角「设置」里手动填写 AK。
+# 只有在你想把 AK 直接编译进 APK 时才需要在这里配置。
+BAIDU_MAP_AK=

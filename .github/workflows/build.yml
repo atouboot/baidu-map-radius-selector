@@ -1,0 +1,116 @@
+name: Build APK
+
+on:
+  push:
+    branches: [ main, master ]
+    paths-ignore:
+      - 'ci/**'
+      - '**.md'
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+# 需要写权限：用于发布 Release（APK）以及在失败时回写构建日志
+permissions:
+  contents: write
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Assemble debug APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools platforms;android-34 build-tools;34.0.0'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+
+      # 固定 debug 签名证书，保证每次构建的 SHA1 一致，
+      # 这样用户申请的百度 AK（绑定 SHA1）不会因重新构建而失效。
+      - name: Restore debug keystore
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: android-debug-keystore-v1
+
+      - name: Build debug APK
+        id: build
+        continue-on-error: true
+        env:
+          # 可选：在仓库 Settings -> Secrets 中配置 BAIDU_MAP_AK 即可把 AK 编译进 APK。
+          # 不配置也没关系，App 内可在运行时填写。
+          BAIDU_MAP_AK: ${{ secrets.BAIDU_MAP_AK }}
+        run: |
+          set -o pipefail
+          gradle --no-daemon --stacktrace assembleDebug 2>&1 | tee build.log
+
+      - name: Print signing fingerprint
+        if: always()
+        run: |
+          KS="$HOME/.android/debug.keystore"
+          if [ -f "$KS" ]; then
+            echo "::group::debug.keystore SHA1 / MD5（申请百度 AK 时需要）"
+            keytool -list -v -keystore "$KS" -alias androiddebugkey \
+              -storepass android -keypass android 2>/dev/null \
+              | grep -E "SHA1:|SHA256:|MD5:" || true
+            echo "::endgroup::"
+          else
+            echo "debug.keystore 尚未生成（构建在生成签名前就失败了）"
+          fi
+
+      - name: Rename APK
+        if: steps.build.outcome == 'success'
+        run: |
+          mkdir -p dist
+          cp app/build/outputs/apk/debug/app-debug.apk \
+             dist/baidu-map-radius-selector-debug.apk
+          ls -lh dist
+
+      - name: Upload APK artifact
+        if: steps.build.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: baidu-map-radius-selector-debug
+          path: dist/*.apk
+          retention-days: 30
+
+      # 发布到 Release：无需登录即可直接下载（Actions artifact 需要登录）
+      - name: Publish APK to release
+        if: steps.build.outcome == 'success'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ci-latest
+          name: 'CI 最新构建（debug）'
+          body: |
+            由 GitHub Actions 自动构建的调试版 APK。
+
+            - 提交：`${{ github.sha }}`
+            - 触发：`${{ github.event_name }}`
+
+            安装与 AK 配置请阅读仓库 README。
+          files: dist/*.apk
+          make_latest: true
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      # 失败时把日志一并保留在 Actions 页面（默认即可查看），无需额外步骤
+      - name: Fail job if build failed
+        if: steps.build.outcome == 'failure'
+        run: exit 1

@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">圆形半径选点</string>
+
+    <!-- 顶部信息卡片 -->
+    <string name="label_center">中心点</string>
+    <string name="label_accuracy">定位精度</string>
+    <string name="label_radius">半径</string>
+    <string name="value_placeholder">—</string>
+    <string name="btn_settings">AK 设置</string>
+
+    <!-- 信息格式化 -->
+    <string name="fmt_center">中心点：%1$s</string>
+    <string name="fmt_accuracy">定位精度：%1$s</string>
+    <string name="fmt_radius_area">半径：%1$s km ｜ 覆盖面积：%2$s km²</string>
+    <string name="accuracy_meters">±%1$s m</string>
+
+    <!-- 底部操作卡片 -->
+    <string name="hint_radius">半径（km）</string>
+    <string name="default_radius">1.00</string>
+    <string name="btn_locate">定位到我的位置</string>
+    <string name="btn_use_location_as_center">以定位点为圆心</string>
+    <string name="btn_clear">清除圆形</string>
+    <string name="tip_click_map">提示：点击地图任意位置即可设为圆心；半径精确到 0.01 km。</string>
+
+    <!-- 提示语 -->
+    <string name="toast_no_permission">未获得定位权限，无法读取当前位置</string>
+    <string name="toast_locating">正在定位，请稍候…</string>
+    <string name="toast_location_failed">定位失败，请检查网络与系统定位开关</string>
+    <string name="toast_need_center">请先在地图上点击选点，或点击「定位到我的位置」</string>
+    <string name="toast_ak_saved">AK 已保存，重启应用后生效</string>
+    <string name="toast_ak_empty">AK 不能为空</string>
+    <string name="toast_radius_invalid">请输入 0.01 ~ %1$.2f 之间的半径</string>
+
+    <!-- AK 设置弹窗 -->
+    <string name="dialog_ak_title">配置百度地图 AK</string>
+    <string name="dialog_ak_message">请填写你在百度地图开放平台申请的 Android 端 AK。\n\n申请时需填写：\n• 包名：com.atouboot.radiusmap\n• SHA1：见 README「获取 SHA1」一节\n\nAK 仅保存在本机，不会上传。</string>
+    <string name="dialog_ak_hint">请输入 AK</string>
+    <string name="dialog_ok">保存</string>
+    <string name="dialog_cancel">取消</string>
+    <string name="dialog_ak_missing_title">尚未配置百度地图 AK</string>
+    <string name="dialog_ak_missing_message">当前 APK 未内置 AK。你可以现在填写，或稍后通过右上角「AK 设置」填写。\n\n没有 AK 时地图与定位无法工作。</string>
+</resources>
