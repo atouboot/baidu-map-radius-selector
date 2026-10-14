@@ -6,6 +6,8 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.RectF
+import android.graphics.Typeface
 import android.os.Bundle
 import android.text.Editable
 import android.text.TextWatcher
@@ -23,6 +25,7 @@ import com.atouboot.radiusmap.data.CircleStore
 import com.atouboot.radiusmap.data.CircleZone
 import com.atouboot.radiusmap.databinding.ActivityMainBinding
 import com.atouboot.radiusmap.ui.CircleZoneAdapter
+import com.atouboot.radiusmap.ui.ZoneColors
 import com.atouboot.radiusmap.util.GeoUtils
 import com.baidu.location.BDAbstractLocationListener
 import com.baidu.location.BDLocation
@@ -41,6 +44,7 @@ import com.baidu.mapapi.map.Marker
 import com.baidu.mapapi.map.MarkerOptions
 import com.baidu.mapapi.map.MyLocationConfiguration
 import com.baidu.mapapi.map.MyLocationData
+import com.baidu.mapapi.map.Overlay
 import com.baidu.mapapi.map.Stroke
 import com.baidu.mapapi.model.LatLng
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
@@ -86,6 +90,9 @@ class MainActivity : AppCompatActivity() {
     /** 已保存的区域列表 */
     private lateinit var zoneAdapter: CircleZoneAdapter
     private val zones = mutableListOf<CircleZone>()
+
+    /** 已保存区域在地图上的覆盖物：zoneId -> [圆形, 圆心点, 名称标签] */
+    private val zoneOverlays = mutableMapOf<Long, MutableList<Overlay>>()
 
     private val centerIcon: BitmapDescriptor by lazy { buildCenterIcon() }
 
@@ -262,6 +269,8 @@ class MainActivity : AppCompatActivity() {
                 .radius(radiusMeters)
                 .fillColor(FILL_COLOR)
                 .stroke(Stroke(STROKE_WIDTH_PX, STROKE_COLOR))
+                // 草稿圆用虚线描边，与「已保存区域」的实线圆区分开
+                .dottedStroke(true)
             circle = baiduMap.addOverlay(options) as? Circle
         }
 
@@ -486,12 +495,115 @@ class MainActivity : AppCompatActivity() {
         zones.clear()
         zones.addAll(CircleStore.loadAll())
         zoneAdapter.submit(zones)
+        renderSavedZones()
 
         val hasZones = zones.isNotEmpty()
         binding.rvZones.visibility = if (hasZones) View.VISIBLE else View.GONE
         binding.tvZonesEmpty.visibility = if (hasZones) View.GONE else View.VISIBLE
         binding.tvSavedTitle.text = getString(R.string.fmt_saved_count, zones.size)
         binding.btnClearAll.isEnabled = hasZones
+    }
+
+    /**
+     * 把所有「已保存区域」常驻绘制到地图上：圆形 + 圆心点 + 名称标签。
+     *
+     * 关键点：不是只画"当前编辑"的那一个，而是全部同时显示，
+     * 这样多个圆的重叠 / 相交关系才能一眼看出来。
+     * 每个区域按列表位置取一个颜色，与列表卡片上的色点一致。
+     */
+    private fun renderSavedZones() {
+        // 先移除上一次绘制的覆盖物
+        zoneOverlays.values.forEach { list -> list.forEach { it.remove() } }
+        zoneOverlays.clear()
+
+        zones.forEachIndexed { index, zone ->
+            val color = ZoneColors.colorAt(index)
+            val center = LatLng(zone.latitude, zone.longitude)
+            val meters = (zone.radiusKm * 1000.0).toInt().coerceAtLeast(1)
+
+            val overlays = mutableListOf<Overlay>()
+
+            overlays.add(
+                baiduMap.addOverlay(
+                    CircleOptions()
+                        .center(center)
+                        .radius(meters)
+                        .fillColor(ZoneColors.fill(color))
+                        .stroke(Stroke(SAVED_STROKE_WIDTH_PX, color))
+                )
+            )
+            overlays.add(
+                baiduMap.addOverlay(
+                    MarkerOptions()
+                        .position(center)
+                        .icon(buildDotIcon(color))
+                        .anchor(0.5f, 0.5f)
+                )
+            )
+            overlays.add(
+                baiduMap.addOverlay(
+                    MarkerOptions()
+                        .position(center)
+                        .icon(buildLabelIcon(zone.name, color))
+                        .anchor(0.5f, 1.0f)
+                )
+            )
+
+            zoneOverlays[zone.id] = overlays
+        }
+    }
+
+    /** 已保存区域的圆心点：外白圈 + 内彩色实心圆 */
+    private fun buildDotIcon(color: Int): BitmapDescriptor {
+        val density = resources.displayMetrics.density
+        val size = (13 * density).toInt().coerceAtLeast(16)
+        val bmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+        bmp.density = resources.displayMetrics.densityDpi
+
+        val canvas = Canvas(bmp)
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+        val r = size / 2f
+
+        paint.style = Paint.Style.FILL
+        paint.color = Color.WHITE
+        canvas.drawCircle(r, r, r, paint)
+
+        paint.color = color
+        canvas.drawCircle(r, r, r * 0.70f, paint)
+
+        return BitmapDescriptorFactory.fromBitmap(bmp)
+    }
+
+    /** 已保存区域的名称标签：圆角底色 + 白字，锚点在底部中点，显示在圆心上方 */
+    private fun buildLabelIcon(text: String, color: Int): BitmapDescriptor {
+        val density = resources.displayMetrics.density
+        val padH = 6f * density
+        val padV = 3f * density
+
+        val textPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+        textPaint.textSize = 11f * density
+        textPaint.typeface = Typeface.DEFAULT_BOLD
+        textPaint.color = Color.WHITE
+
+        val fm = textPaint.fontMetrics
+        val textW = textPaint.measureText(text)
+        val textH = fm.descent - fm.ascent
+
+        val w = (textW + padH * 2f).toInt().coerceAtLeast(1)
+        val h = (textH + padV * 2f).toInt().coerceAtLeast(1)
+
+        val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        bmp.density = resources.displayMetrics.densityDpi
+
+        val canvas = Canvas(bmp)
+        val bg = Paint(Paint.ANTI_ALIAS_FLAG)
+        bg.color = color
+        val corner = 4f * density
+        canvas.drawRoundRect(RectF(0f, 0f, w.toFloat(), h.toFloat()), corner, corner, bg)
+
+        canvas.drawText(text, padH, padV - fm.ascent, textPaint)
+
+        return BitmapDescriptorFactory.fromBitmap(bmp)
     }
 
     private fun saveCurrentZone() {
@@ -513,6 +625,8 @@ class MainActivity : AppCompatActivity() {
         )
         CircleStore.add(zone)
         refreshZones()
+        // 草稿圆已经变成「已保存区域」并常驻显示，清掉草稿避免地图上出现两个重合的圆
+        clearCircle()
         toast(getString(R.string.toast_saved, name))
     }
 
@@ -523,9 +637,16 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun focusZone(zone: CircleZone) {
+        // 已保存区域本来就常驻显示在地图上，这里只移动视角 + 把参数回填到输入框，
+        // 不再额外创建草稿圆，避免和已保存的那个重合。
         radiusKm = zone.radiusKm
         binding.etRadius.setText(GeoUtils.formatKm(zone.radiusKm))
-        setCenter(LatLng(zone.latitude, zone.longitude), moveCamera = true)
+        baiduMap.animateMapStatus(
+            MapStatusUpdateFactory.newLatLngZoom(
+                LatLng(zone.latitude, zone.longitude),
+                zoomForRadius(zone.radiusKm)
+            )
+        )
         toast(getString(R.string.toast_zone_loaded, zone.name))
     }
 
@@ -659,5 +780,8 @@ class MainActivity : AppCompatActivity() {
         private val STROKE_COLOR = Color.parseColor("#CC1976D2")
 
         private const val STROKE_WIDTH_PX = 4
+
+        /** 已保存区域圆形的描边宽度 */
+        private const val SAVED_STROKE_WIDTH_PX = 3
     }
 }

@@ -1,5 +1,6 @@
 package com.atouboot.radiusmap.ui
 
+import android.content.res.ColorStateList
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -12,8 +13,10 @@ import com.atouboot.radiusmap.util.GeoUtils
 /**
  * 「已保存区域」横向列表适配器。
  *
+ * 卡片上的色点与描边颜色，与地图上该区域的圆形颜色一致，便于一一对应。
+ *
  * 交互：
- *  - 点击卡片：地图定位到该区域并显示其圆形
+ *  - 点击卡片：地图定位到该区域
  *  - 点击右上角 ✕：删除该区域
  */
 class CircleZoneAdapter(
@@ -37,7 +40,7 @@ class CircleZoneAdapter(
     }
 
     override fun onBindViewHolder(holder: ZoneViewHolder, position: Int) {
-        holder.bind(items[position])
+        holder.bind(items[position], position)
     }
 
     override fun getItemCount(): Int = items.size
@@ -46,13 +49,19 @@ class CircleZoneAdapter(
         private val binding: ItemCircleZoneBinding
     ) : RecyclerView.ViewHolder(binding.root) {
 
-        fun bind(zone: CircleZone) {
+        fun bind(zone: CircleZone, position: Int) {
+            val color = ZoneColors.colorAt(position)
+
             binding.tvName.text = zone.name
             binding.tvMeta.text = binding.root.context.getString(
                 R.string.fmt_zone_meta,
                 GeoUtils.formatKm(zone.radiusKm),
                 GeoUtils.formatLatLng(zone.latitude, zone.longitude)
             )
+
+            // 色点与卡片描边都跟随该区域在地图上的颜色
+            binding.vColor.backgroundTintList = ColorStateList.valueOf(color)
+            binding.root.strokeColor = color
 
             binding.btnDelete.visibility = View.VISIBLE
             binding.btnDelete.setOnClickListener { onItemDelete(zone) }
